@@ -1,0 +1,7 @@
+tensorflow==2.20.0
+datasets==4.3.0
+scikit-learn==1.7.2
+streamlit==1.50.0
+pydeck==0.9.1
+numpy==2.2.6
+pandas==2.3.3

@@ -1,0 +1,23 @@
+# Large generated project artifacts
+data/
+!data/
+data/*
+!data/raw/
+!data/raw/.gitkeep
+!data/processed/
+!data/processed/.gitkeep
+checkpoints/
+!checkpoints/
+checkpoints/*
+!checkpoints/.gitkeep
+export/*.tflite
+export/*.json
+
+# Python caches and local environments
+__pycache__/
+*.pyc
+.venv/
+.streamlit/
+
+# Hugging Face datasets cache
+~/.cache/huggingface

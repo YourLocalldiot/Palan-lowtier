@@ -1,0 +1,50 @@
+"""Geospatial helpers shared by the project scripts."""
+
+from __future__ import annotations
+
+import json
+from pathlib import Path
+
+import numpy as np
+
+
+EARTH_RADIUS_KM = 6371.0088
+
+# Standard geolocation error buckets (street / city / region / country / continent).
+ACCURACY_THRESHOLDS_KM = (1.0, 25.0, 200.0, 750.0, 2500.0)
+
+
+def haversine(
+	lat1: float | np.ndarray,
+	lon1: float | np.ndarray,
+	lat2: float | np.ndarray,
+	lon2: float | np.ndarray,
+) -> float | np.ndarray:
+	"""Return great-circle distance in kilometres between coordinate pairs."""
+	lat1_rad, lon1_rad, lat2_rad, lon2_rad = map(
+		np.radians, (lat1, lon1, lat2, lon2)
+	)
+	delta_lat = lat2_rad - lat1_rad
+	delta_lon = lon2_rad - lon1_rad
+	haversine_angle = (
+		np.sin(delta_lat / 2.0) ** 2
+		+ np.cos(lat1_rad) * np.cos(lat2_rad) * np.sin(delta_lon / 2.0) ** 2
+	)
+	distance = 2.0 * EARTH_RADIUS_KM * np.arcsin(
+		np.sqrt(np.clip(haversine_angle, 0.0, 1.0))
+	)
+	return float(distance) if np.ndim(distance) == 0 else distance
+
+
+def load_centroids(path: Path) -> dict[int, tuple[float, float]]:
+	"""Load a cell_centroids.json mapping cell id to (lat, lon)."""
+	data = json.loads(Path(path).read_text(encoding="utf-8"))
+	return {int(cell_id): (value["centroid_lat"], value["centroid_lon"]) for cell_id, value in data.items()}
+
+
+def accuracy_at_thresholds(
+	distances_km: np.ndarray, thresholds_km: tuple[float, ...] = ACCURACY_THRESHOLDS_KM
+) -> dict[float, float]:
+	"""Return the fraction of distances at or under each threshold, in kilometres."""
+	distances_km = np.asarray(distances_km, dtype=np.float64)
+	return {threshold: float(np.mean(distances_km <= threshold)) for threshold in thresholds_km}
