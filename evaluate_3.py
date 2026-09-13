@@ -9,7 +9,7 @@ import numpy as np
 import tensorflow as tf
 
 from data_pipeline_1 import CENTROIDS_PATH, build_eval_dataset
-from geo_utils import accuracy_at_thresholds, haversine, load_centroids
+from geo_utils import accuracy_at_thresholds, haversine, load_centroids, weighted_centroid
 
 DEV_TFRECORD = Path("data/processed/dev.tfrecord")
 DEFAULT_MODEL_PATH = Path("checkpoints/best.keras")
@@ -19,8 +19,14 @@ def evaluate(
 	model: tf.keras.Model,
 	dataset: tf.data.Dataset,
 	centroids: dict[int, tuple[float, float]],
+	top_k: int = 5,
 ) -> tuple[np.ndarray, np.ndarray]:
-	"""Return (haversine_distances_km, top1_cell_correct) across the dataset."""
+	"""Return (haversine_distances_km, top1_cell_correct) across the dataset.
+
+	Distance error uses a top-k probability-weighted centroid rather than a hard
+	argmax, which smooths over near-miss cells; top-1 accuracy still reflects the
+	single most-likely cell for a classification-style read on the model.
+	"""
 	num_classes = len(centroids)
 	centroid_lat = np.array([centroids[i][0] for i in range(num_classes)])
 	centroid_lon = np.array([centroids[i][1] for i in range(num_classes)])
@@ -31,10 +37,11 @@ def evaluate(
 	for images, cell_ids, latitudes, longitudes in dataset:
 		probabilities = model.predict(images, verbose=0)
 		predicted_cells = np.argmax(probabilities, axis=1)
+		pred_lat, pred_lon = weighted_centroid(probabilities, centroid_lat, centroid_lon, top_k=top_k)
 		true_lat_batches.append(latitudes.numpy())
 		true_lon_batches.append(longitudes.numpy())
-		pred_lat_batches.append(centroid_lat[predicted_cells])
-		pred_lon_batches.append(centroid_lon[predicted_cells])
+		pred_lat_batches.append(pred_lat)
+		pred_lon_batches.append(pred_lon)
 		correct_batches.append(predicted_cells == cell_ids.numpy())
 
 	true_lat = np.concatenate(true_lat_batches)
@@ -62,6 +69,7 @@ def parse_args() -> argparse.Namespace:
 	parser.add_argument("--dev-tfrecord", type=Path, default=DEV_TFRECORD)
 	parser.add_argument("--batch-size", type=int, default=32)
 	parser.add_argument("--normalization", choices=("minus_one_one", "imagenet"), default="minus_one_one")
+	parser.add_argument("--top-k", type=int, default=5, help="Cells averaged for the weighted-centroid guess")
 	return parser.parse_args()
 
 
@@ -82,7 +90,7 @@ def main() -> None:
 		args.dev_tfrecord, batch_size=args.batch_size, normalization=args.normalization
 	)
 
-	distances_km, correct = evaluate(model, dataset, centroids)
+	distances_km, correct = evaluate(model, dataset, centroids, top_k=args.top_k)
 	print_report(distances_km, correct)
 
 

@@ -48,3 +48,30 @@ def accuracy_at_thresholds(
 	"""Return the fraction of distances at or under each threshold, in kilometres."""
 	distances_km = np.asarray(distances_km, dtype=np.float64)
 	return {threshold: float(np.mean(distances_km <= threshold)) for threshold in thresholds_km}
+
+
+def weighted_centroid(
+	probabilities: np.ndarray,
+	centroid_lat: np.ndarray,
+	centroid_lon: np.ndarray,
+	top_k: int = 5,
+) -> tuple[np.ndarray, np.ndarray] | tuple[float, float]:
+	"""Average the top-k predicted cells' centroids, weighted by renormalized probability.
+
+	Smooths over near-miss cells instead of committing to a single argmax cell, which
+	reduces distance error even when the single most-likely cell is wrong. Accepts a
+	single probability vector or a batch of them; returns a matching shape.
+	"""
+	probabilities = np.asarray(probabilities, dtype=np.float64)
+	single = probabilities.ndim == 1
+	if single:
+		probabilities = probabilities[np.newaxis, :]
+
+	k = min(top_k, probabilities.shape[1])
+	top_indices = np.argsort(probabilities, axis=1)[:, ::-1][:, :k]
+	top_probs = np.take_along_axis(probabilities, top_indices, axis=1)
+	weights = top_probs / top_probs.sum(axis=1, keepdims=True)
+
+	lat = np.sum(weights * centroid_lat[top_indices], axis=1)
+	lon = np.sum(weights * centroid_lon[top_indices], axis=1)
+	return (float(lat[0]), float(lon[0])) if single else (lat, lon)

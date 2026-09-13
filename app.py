@@ -11,10 +11,13 @@ import streamlit as st
 import tensorflow as tf
 from PIL import Image
 
+from geo_utils import weighted_centroid
+
 EXPORT_DIR = Path("export")
 MODEL_PATH = EXPORT_DIR / "model.tflite"
 CENTROIDS_PATH = EXPORT_DIR / "cell_centroids.json"
 CONFIG_PATH = EXPORT_DIR / "config.json"
+TOP_K = 5
 
 
 @st.cache_resource
@@ -80,25 +83,30 @@ def main() -> None:
 	batch = preprocess(image, image_size, normalization)
 	probabilities = predict(interpreter, batch)
 
+	num_classes = len(centroids)
+	centroid_lat = np.array([centroids[i][0] for i in range(num_classes)])
+	centroid_lon = np.array([centroids[i][1] for i in range(num_classes)])
+
 	top_indices = np.argsort(probabilities)[::-1][:3]
 	best_cell = int(top_indices[0])
-	best_lat, best_lon = centroids[best_cell]
 	confidence = float(probabilities[best_cell])
+	guess_lat, guess_lon = weighted_centroid(probabilities, centroid_lat, centroid_lon, top_k=TOP_K)
 
 	st.subheader("Best guess")
+	st.caption(f"Weighted average of the top {TOP_K} predicted cells")
 	col1, col2, col3 = st.columns(3)
-	col1.metric("Latitude", f"{best_lat:.4f}")
-	col2.metric("Longitude", f"{best_lon:.4f}")
-	col3.metric("Confidence", f"{confidence:.1%}")
+	col1.metric("Latitude", f"{guess_lat:.4f}")
+	col2.metric("Longitude", f"{guess_lon:.4f}")
+	col3.metric("Top cell confidence", f"{confidence:.1%}")
 
 	st.pydeck_chart(
 		pdk.Deck(
 			map_style=None,
-			initial_view_state=pdk.ViewState(latitude=best_lat, longitude=best_lon, zoom=4),
+			initial_view_state=pdk.ViewState(latitude=guess_lat, longitude=guess_lon, zoom=4),
 			layers=[
 				pdk.Layer(
 					"ScatterplotLayer",
-					data=[{"lat": best_lat, "lon": best_lon}],
+					data=[{"lat": guess_lat, "lon": guess_lon}],
 					get_position="[lon, lat]",
 					get_fill_color=[220, 40, 40],
 					get_radius=40000,

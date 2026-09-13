@@ -300,6 +300,7 @@ def parse_args() -> argparse.Namespace:
 	parser.add_argument("--dev-fraction", type=float, default=0.0)
 	parser.add_argument("--normalization", choices=("minus_one_one", "imagenet"), default="minus_one_one")
 	parser.add_argument("--batch-size", type=int, default=32)
+	parser.add_argument("--num-geocells", type=int, default=NUM_GEOCELLS)
 	return parser.parse_args()
 
 
@@ -310,7 +311,7 @@ def main() -> None:
 	materialize_filtered_split()
 	records = load_cached_records()
 	print_baseline(records)
-	cluster_geocells(records)
+	cluster_geocells(records, n_clusters=args.num_geocells)
 	write_annotated_records(records)
 	write_split_records(records, Path("data/processed"), args.dev_fraction)
 	print(
