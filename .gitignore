@@ -1,13 +1,8 @@
 # Large generated project artifacts
-data/
-!data/
-data/*
-!data/raw/
+data/raw/*
 !data/raw/.gitkeep
-!data/processed/
+data/processed/*
 !data/processed/.gitkeep
-checkpoints/
-!checkpoints/
 checkpoints/*
 !checkpoints/.gitkeep
 export/*.tflite
