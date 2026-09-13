@@ -108,9 +108,14 @@ def materialize_filtered_split(output_path: Path = RAW_TFRECORD) -> None:
 	output_path.parent.mkdir(parents=True, exist_ok=True)
 	counts: Counter[str] = Counter()
 	total = 0
+	scanned = 0
+	progress_every = 5_000
 	streamed = load_dataset(DATASET_NAME, split="train", streaming=True)
 	with tf.io.TFRecordWriter(str(output_path)) as writer:
 		for source_record in streamed:
+			scanned += 1
+			if scanned % progress_every == 0:
+				print(f"  scanned {scanned:,} source records, kept {total:,} so far...")
 			if source_record.get("country_code") not in COUNTRIES:
 				continue
 			record = {
@@ -126,6 +131,7 @@ def materialize_filtered_split(output_path: Path = RAW_TFRECORD) -> None:
 			counts[record["country_code"]] += 1
 			total += 1
 
+	print(f"Scanned {scanned:,} source records total")
 	print(f"Materialized {total:,} filtered images to {output_path}")
 	print_country_counts(counts)
 
