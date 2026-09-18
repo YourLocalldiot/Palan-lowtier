@@ -62,7 +62,7 @@ def predict(interpreter: tf.lite.Interpreter, batch: np.ndarray) -> np.ndarray:
 def main() -> None:
 	st.set_page_config(page_title="Palan Lowtier", page_icon="\U0001f30f")
 	st.title("Palan Lowtier: Guess the Location")
-	st.caption("Currently trained on street-view images from Vietnam, the Philippines, Japan, and South Korea.")
+	st.caption("Currently trained on street-view images from across Asia.")
 
 	if not MODEL_PATH.exists() or not CENTROIDS_PATH.exists() or not CONFIG_PATH.exists():
 		st.error(f"No exported model bundle found in {EXPORT_DIR}/. Run export_4.py first.")

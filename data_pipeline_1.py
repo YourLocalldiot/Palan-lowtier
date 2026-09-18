@@ -1,4 +1,4 @@
-"""Stream, materialize, and prepare the four-country street-view dataset."""
+"""Stream, materialize, and prepare the Asia-wide street-view dataset."""
 
 from __future__ import annotations
 
@@ -19,7 +19,23 @@ from geo_utils import haversine
 
 
 DATASET_NAME = "josefbednar/world-streetview-500k"
-COUNTRIES = frozenset({"VN", "PH", "JP", "KR"})
+# ISO 3166-1 alpha-2 codes for every country/territory in the UN geoscheme's Asia
+# region (Eastern, South-Eastern, Southern, Central, and Western Asia).
+COUNTRIES = frozenset(
+	{
+		# Eastern Asia
+		"CN", "HK", "MO", "JP", "MN", "KP", "KR", "TW",
+		# South-Eastern Asia
+		"BN", "KH", "TL", "ID", "LA", "MY", "MM", "PH", "SG", "TH", "VN",
+		# Southern Asia
+		"AF", "BD", "BT", "IN", "IR", "MV", "NP", "PK", "LK",
+		# Central Asia
+		"KZ", "KG", "TJ", "TM", "UZ",
+		# Western Asia
+		"AM", "AZ", "BH", "CY", "GE", "IQ", "IL", "JO", "KW", "LB",
+		"OM", "PS", "QA", "SA", "SY", "TR", "AE", "YE",
+	}
+)
 NUM_GEOCELLS = 100
 IMAGE_SIZE = (224, 224)
 RAW_TFRECORD = Path("data/raw/filtered_train.tfrecord")

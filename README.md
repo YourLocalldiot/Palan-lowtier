@@ -1,15 +1,10 @@
 # Palan Lowtier
 
-Palan Lowtier is a machine learning project for working with streamed geographic and language data across Vietnam, the Philippines, Japan, and South Korea.
+Palan Lowtier is a machine learning project for working with streamed geographic and language data across Asia.
 
 ## Current Scope
 
-The current project scope covers:
-
-- VN: Vietnam
-- PH: Philippines
-- JP: Japan
-- KR: South Korea
+The current project scope covers every country/territory in the UN geoscheme's Asia region (Eastern, South-Eastern, Southern, Central, and Western Asia) — see `COUNTRIES` in [data_pipeline_1.py](data_pipeline_1.py) for the exact ISO 3166-1 alpha-2 code list.
 
 ## Setup
 
