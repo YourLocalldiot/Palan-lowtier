@@ -69,7 +69,7 @@ def parse_args() -> argparse.Namespace:
 def main() -> None:
 	args = parse_args()
 	if not CENTROIDS_PATH.exists():
-		raise FileNotFoundError(f"{CENTROIDS_PATH} not found; run data_pipeline_1.py first")
+		raise FileNotFoundError(f"{CENTROIDS_PATH} not found; run data_pipeline.py first")
 	num_classes = len(load_centroids(CENTROIDS_PATH))
 	print(f"Training a {num_classes}-way geocell classifier")
 
@@ -96,7 +96,7 @@ def main() -> None:
 	else:
 		print(
 			f"No dev split found at {DEV_TFRECORD}; training without validation. "
-			"Re-run data_pipeline_1.py with --dev-fraction to enable it."
+			"Re-run data_pipeline.py with --dev-fraction to enable it."
 		)
 
 	monitor = "val_loss" if dev_ds is not None else "loss"
