@@ -27,7 +27,7 @@ Run the project stages in this order:
 python data_pipeline_1.py -> python train_2.py -> python evaluate_3.py -> python export_4.py -> streamlit run app.py
 ```
 
-The `data/`, `checkpoints/`, and `export/` directories are regenerated locally and are not stored in git. They contain generated dataset files, model checkpoints, and exported models.
+The `data/` and `checkpoints/` directories are regenerated locally and are not stored in git; they contain generated dataset files and model checkpoints. The `export/` directory *is* committed — it's the small TFLite bundle that the Streamlit app (including the deployed Streamlit Cloud app) reads directly, so it needs to be in the repo.
 
 ## Data Pipeline
 

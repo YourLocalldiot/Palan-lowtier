@@ -1,12 +1,12 @@
-# Large generated project artifacts
+# Large generated project artifacts (regenerated locally, not needed for deployment)
 data/raw/*
 !data/raw/.gitkeep
 data/processed/*
 !data/processed/.gitkeep
 checkpoints/*
 !checkpoints/.gitkeep
-export/*.tflite
-export/*.json
+
+# export/ is committed on purpose: it's the small deployable bundle Streamlit Cloud reads
 
 # Python caches and local environments
 __pycache__/

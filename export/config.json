@@ -1,0 +1,8 @@
+{
+  "image_size": [
+    224,
+    224
+  ],
+  "normalization": "minus_one_one",
+  "num_classes": 100
+}
