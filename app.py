@@ -13,7 +13,7 @@ from PIL import Image
 
 from geo_utils import weighted_centroid
 
-EXPORT_DIR = Path("export")
+EXPORT_DIR = Path(__file__).resolve().parent / "export"
 MODEL_PATH = EXPORT_DIR / "model.tflite"
 CENTROIDS_PATH = EXPORT_DIR / "cell_centroids.json"
 CONFIG_PATH = EXPORT_DIR / "config.json"
