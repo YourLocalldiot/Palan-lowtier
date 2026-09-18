@@ -55,12 +55,17 @@ def weighted_centroid(
 	centroid_lat: np.ndarray,
 	centroid_lon: np.ndarray,
 	top_k: int = 5,
+	max_distance_km: float = 800.0,
 ) -> tuple[np.ndarray, np.ndarray] | tuple[float, float]:
 	"""Average the top-k predicted cells' centroids, weighted by renormalized probability.
 
 	Smooths over near-miss cells instead of committing to a single argmax cell, which
-	reduces distance error even when the single most-likely cell is wrong. Accepts a
-	single probability vector or a batch of them; returns a matching shape.
+	reduces distance error when the single most-likely cell is a nearby miss. Cells
+	farther than max_distance_km from the single most-likely (top-1) cell are dropped
+	before averaging: without this, a model uncertain *between* widely separated regions
+	(e.g. different countries) would have its top-k centroids blended into a meaningless
+	midpoint (e.g. the ocean between them) rather than falling back to its single best
+	guess. Accepts a single probability vector or a batch of them; returns a matching shape.
 	"""
 	probabilities = np.asarray(probabilities, dtype=np.float64)
 	single = probabilities.ndim == 1
@@ -70,7 +75,14 @@ def weighted_centroid(
 	k = min(top_k, probabilities.shape[1])
 	top_indices = np.argsort(probabilities, axis=1)[:, ::-1][:, :k]
 	top_probs = np.take_along_axis(probabilities, top_indices, axis=1)
-	weights = top_probs / top_probs.sum(axis=1, keepdims=True)
+
+	top1_lat = centroid_lat[top_indices[:, :1]]
+	top1_lon = centroid_lon[top_indices[:, :1]]
+	distance_from_top1 = haversine(top1_lat, top1_lon, centroid_lat[top_indices], centroid_lon[top_indices])
+	# The top-1 cell is always distance 0 from itself, so it's always kept and the
+	# weights below never sum to zero.
+	masked_probs = np.where(distance_from_top1 <= max_distance_km, top_probs, 0.0)
+	weights = masked_probs / masked_probs.sum(axis=1, keepdims=True)
 
 	lat = np.sum(weights * centroid_lat[top_indices], axis=1)
 	lon = np.sum(weights * centroid_lon[top_indices], axis=1)

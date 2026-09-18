@@ -72,7 +72,10 @@ def main() -> None:
 	image_size = tuple(config["image_size"])
 	normalization = config["normalization"]
 
-	uploaded_file = st.file_uploader("Upload a street-view style photo", type=["jpg", "jpeg", "png"])
+	uploaded_file = st.file_uploader(
+		"Upload a street-view style photo",
+		type=["jpg", "jpeg", "png", "webp", "tiff", "tif", "jfif"],
+	)
 	if uploaded_file is None:
 		st.info("Upload an image to get a coordinate guess.")
 		return
