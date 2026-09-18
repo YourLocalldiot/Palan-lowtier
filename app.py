@@ -6,6 +6,7 @@ import json
 from pathlib import Path
 
 import numpy as np
+import pillow_avif  # noqa: F401 - registers AVIF support with Pillow
 import pydeck as pdk
 import streamlit as st
 import tensorflow as tf
@@ -74,7 +75,7 @@ def main() -> None:
 
 	uploaded_file = st.file_uploader(
 		"Upload a street-view style photo",
-		type=["jpg", "jpeg", "png", "webp", "tiff", "tif", "jfif"],
+		type=["jpg", "jpeg", "png", "webp", "tiff", "tif", "jfif", "avif"],
 	)
 	if uploaded_file is None:
 		st.info("Upload an image to get a coordinate guess.")
