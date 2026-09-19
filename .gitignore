@@ -12,7 +12,10 @@ checkpoints/*
 __pycache__/
 *.pyc
 .venv/
-.streamlit/
+
+# .streamlit/config.toml is committed on purpose (theme applies to the deployed app too);
+# only secrets should ever be excluded.
+.streamlit/secrets.toml
 
 # Hugging Face datasets cache
 ~/.cache/huggingface

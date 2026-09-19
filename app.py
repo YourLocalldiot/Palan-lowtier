@@ -20,6 +20,76 @@ CENTROIDS_PATH = EXPORT_DIR / "cell_centroids.json"
 CONFIG_PATH = EXPORT_DIR / "config.json"
 TOP_K = 5
 
+# Dark, high-contrast theme inspired by palantir.com's measured styles: near-black
+# background, off-white/muted-gray text, sharp 0px-radius corners, and a regular-weight
+# display font with tight letter-spacing. Palantir's actual typeface ("Alliance No.1/2")
+# is proprietary/licensed, so Inter stands in as a free lookalike for the same feel.
+STYLE = """
+<style>
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&family=JetBrains+Mono:wght@400;500&display=swap');
+
+html, body, [class*="css"], .stApp {
+	font-family: 'Inter', system-ui, -apple-system, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif !important;
+}
+
+h1, h2, h3 {
+	font-weight: 400 !important;
+	letter-spacing: -0.03em !important;
+}
+
+h1 { font-size: 2.75rem !important; }
+
+p, .stCaption, [data-testid="stCaptionContainer"] {
+	color: #B9B9B9 !important;
+}
+
+/* Sharp corners everywhere, no rounded UI elements */
+button, input, textarea, select,
+[data-testid="stFileUploaderDropzone"],
+[data-testid="stFileUploader"] section,
+[data-testid="stMetric"],
+[data-testid="stAlert"],
+[data-testid="stImage"] img,
+.stButton > button,
+div[data-baseweb="select"] > div {
+	border-radius: 0px !important;
+}
+
+/* Primary CTA-style buttons: white on near-black, matching Palantir's "Get Started" */
+.stButton > button, [data-testid="stFileUploader"] button {
+	background-color: #EFEFEF !important;
+	color: #0D0E10 !important;
+	border: none !important;
+	font-weight: 400 !important;
+	letter-spacing: normal !important;
+}
+.stButton > button:hover, [data-testid="stFileUploader"] button:hover {
+	background-color: #FFFFFF !important;
+}
+
+/* Metric labels: tracked uppercase; values in monospace for a technical readout feel */
+[data-testid="stMetricLabel"] {
+	text-transform: uppercase !important;
+	letter-spacing: 0.08em !important;
+	font-size: 0.72rem !important;
+	color: #8A8D91 !important;
+}
+[data-testid="stMetricValue"] {
+	font-family: 'JetBrains Mono', 'IBM Plex Mono', monospace !important;
+	font-weight: 500 !important;
+}
+
+hr {
+	border-color: rgba(255, 255, 255, 0.1) !important;
+}
+
+[data-testid="stFileUploaderDropzone"] {
+	background-color: #16181B !important;
+	border: 1px solid rgba(255, 255, 255, 0.15) !important;
+}
+</style>
+"""
+
 
 @st.cache_resource
 def load_interpreter() -> tf.lite.Interpreter:
@@ -61,6 +131,7 @@ def predict(interpreter: tf.lite.Interpreter, batch: np.ndarray) -> np.ndarray:
 
 def main() -> None:
 	st.set_page_config(page_title="Palan-lowtier", page_icon="\U0001f30f")
+	st.markdown(STYLE, unsafe_allow_html=True)
 	st.title("Palan Lowtier: Guess the Location")
 	st.caption("Currently trained on street-view images from across Asia.")
 
