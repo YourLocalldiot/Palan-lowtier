@@ -11,12 +11,14 @@ import pydeck as pdk
 import requests
 import streamlit as st
 import tensorflow as tf
+from google import genai
 from PIL import Image
 
 from geo_utils import weighted_centroid
 
 PALANTIR_URL = "https://www.palantir.com"
 REVERSE_GEOCODE_URL = "https://api.bigdatacloud.net/data/reverse-geocode-client"
+GEMINI_MODEL = "gemini-flash-latest"
 
 EXPORT_DIR = Path(__file__).resolve().parent / "export"
 MODEL_PATH = EXPORT_DIR / "model.tflite"
@@ -146,7 +148,7 @@ NAVBAR = f"""
 <div class="pt-navbar">
 	<div class="pt-navbar-left">
 		<a class="pt-nav-wordmark" href="{PALANTIR_URL}" target="_blank" rel="noopener noreferrer">Palantir</a>
-		<a class="pt-nav-link" href="{PALANTIR_URL}" target="_blank" rel="noopener noreferrer">Palantir this way &rarr;</a>
+		<a class="pt-nav-link" href="{PALANTIR_URL}" target="_blank" rel="noopener noreferrer">&larr; Palantir this way</a>
 	</div>
 	<div>
 		<a class="pt-nav-link" href="#main-content">&darr; Palan-lowtier down here</a>
@@ -217,6 +219,55 @@ def reverse_geocode(lat: float, lon: float) -> tuple[str, str]:
 		return "", ""
 
 
+def _normalize_country(name: str) -> str:
+	return "".join(name.lower().split())
+
+
+def _country_matches(a: str, b: str) -> bool:
+	na, nb = _normalize_country(a), _normalize_country(b)
+	return bool(na) and bool(nb) and (na == nb or na in nb or nb in na)
+
+
+@st.cache_resource
+def load_gemini_client() -> genai.Client | None:
+	"""Return a Gemini client if GEMINI_API_KEY is configured, else None.
+
+	Missing configuration is not an error: the app works fine without it, just
+	without the cross-check fallback for country-ambiguous predictions.
+	"""
+	try:
+		api_key = st.secrets["GEMINI_API_KEY"]
+	except Exception:
+		return None
+	if not api_key:
+		return None
+	return genai.Client(api_key=api_key)
+
+
+def gemini_guess_country(client: genai.Client, image: Image.Image, candidate_countries: list[str]) -> str | None:
+	"""Ask Gemini to pick the most likely country from candidates, given the photo.
+
+	Only meant to break ties when the CNN's own top predictions already span more
+	than one of these candidates (see main()) - not a general-purpose classifier.
+	Returns None on any failure or an answer that doesn't match a candidate.
+	"""
+	prompt = (
+		"This photo is a street-view style image. Based on visual cues (text/language on "
+		"signs, license plates, which side vehicles drive on, architecture, vegetation), "
+		f"which of these countries is it most likely from: {', '.join(candidate_countries)}? "
+		"Reply with ONLY the single most likely country name from that list, nothing else."
+	)
+	try:
+		response = client.models.generate_content(model=GEMINI_MODEL, contents=[prompt, image])
+		answer = (response.text or "").strip()
+	except Exception:
+		return None
+	for country in candidate_countries:
+		if _country_matches(answer, country):
+			return country
+	return None
+
+
 def main() -> None:
 	st.set_page_config(page_title="Palan-lowtier", page_icon="\U0001f30f")
 	st.markdown(STYLE, unsafe_allow_html=True)
@@ -251,21 +302,51 @@ def main() -> None:
 	centroid_lat = np.array([centroids[i][0] for i in range(num_classes)])
 	centroid_lon = np.array([centroids[i][1] for i in range(num_classes)])
 
-	top_indices = np.argsort(probabilities)[::-1][:3]
-	best_cell = int(top_indices[0])
+	top_k_indices = np.argsort(probabilities)[::-1][:TOP_K]
+	top_indices = top_k_indices[:3]
+	best_cell = int(top_k_indices[0])
 	confidence = float(probabilities[best_cell])
 	guess_lat, guess_lon = weighted_centroid(probabilities, centroid_lat, centroid_lon, top_k=TOP_K)
 
 	st.subheader("Best guess")
 	st.caption(f"Weighted average of the top {TOP_K} predicted cells")
 
+	gemini_note = None
 	with st.spinner("Looking up the nearest region and country..."):
-		region, country = reverse_geocode(guess_lat, guess_lon)
+		# Reverse-geocode each of the CNN's top-k cells to see whether its own
+		# candidates actually span more than one country - a direct sign of the
+		# cross-country ambiguity the plain weighted-centroid blend can't resolve.
+		cell_countries = [reverse_geocode(*centroids[int(idx)])[1] for idx in top_k_indices]
+		distinct_countries = sorted({c for c in cell_countries if c})
+
+	if len(distinct_countries) > 1:
+		gemini_client = load_gemini_client()
+		if gemini_client is not None:
+			with st.spinner("Cross-checking with Gemini..."):
+				chosen_country = gemini_guess_country(gemini_client, image, distinct_countries)
+			if chosen_country is not None:
+				matching = [
+					idx for idx, c in zip(top_k_indices, cell_countries) if _country_matches(c, chosen_country)
+				]
+				guess_lat, guess_lon = weighted_centroid(
+					probabilities[matching], centroid_lat[matching], centroid_lon[matching],
+					top_k=len(matching), max_distance_km=float("inf"),
+				)
+				gemini_note = f"Model's top guesses spanned {', '.join(distinct_countries)} - Gemini narrowed it to {chosen_country}."
+		else:
+			gemini_note = (
+				f"Model's top guesses spanned {', '.join(distinct_countries)}, but no GEMINI_API_KEY is "
+				"configured to break the tie - showing the plain weighted-average guess."
+			)
+
+	region, country = reverse_geocode(guess_lat, guess_lon)
 	if country:
 		location_label = f"{region}, <span class='country'>{country}</span>" if region else country
 	else:
 		location_label = "Unable to determine region/country right now"
 	st.markdown(f"<div class='location-result'>{location_label}</div>", unsafe_allow_html=True)
+	if gemini_note:
+		st.caption(gemini_note)
 
 	col1, col2, col3 = st.columns(3)
 	col1.metric("Latitude", f"{guess_lat:.4f}")
