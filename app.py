@@ -272,7 +272,7 @@ def main() -> None:
 	st.set_page_config(page_title="Palan-lowtier", page_icon="\U0001f30f")
 	st.markdown(STYLE, unsafe_allow_html=True)
 	st.markdown(NAVBAR, unsafe_allow_html=True)
-	st.title("Palan Lowtier: Guess the Location")
+	st.title("Palan-lowtier: Guess the Location")
 	st.caption("Currently trained on street-view images from across Asia.")
 
 	if not MODEL_PATH.exists() or not CENTROIDS_PATH.exists() or not CONFIG_PATH.exists():
