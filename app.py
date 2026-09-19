@@ -8,11 +8,15 @@ from pathlib import Path
 import numpy as np
 import pillow_avif  # noqa: F401 - registers AVIF support with Pillow
 import pydeck as pdk
+import requests
 import streamlit as st
 import tensorflow as tf
 from PIL import Image
 
 from geo_utils import weighted_centroid
+
+PALANTIR_URL = "https://www.palantir.com"
+REVERSE_GEOCODE_URL = "https://api.bigdatacloud.net/data/reverse-geocode-client"
 
 EXPORT_DIR = Path(__file__).resolve().parent / "export"
 MODEL_PATH = EXPORT_DIR / "model.tflite"
@@ -87,7 +91,68 @@ hr {
 	background-color: #16181B !important;
 	border: 1px solid rgba(255, 255, 255, 0.15) !important;
 }
+
+.pt-navbar {
+	display: flex;
+	justify-content: space-between;
+	align-items: center;
+	flex-wrap: wrap;
+	gap: 0.75rem;
+	padding: 0 0 1rem 0;
+	margin-bottom: 1.5rem;
+	border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+}
+.pt-navbar-left {
+	display: flex;
+	align-items: center;
+	gap: 1.5rem;
+}
+.pt-nav-wordmark {
+	font-size: 1.05rem;
+	font-weight: 500;
+	letter-spacing: -0.01em;
+	color: #EFEFEF !important;
+	text-decoration: none !important;
+}
+.pt-nav-link {
+	font-size: 0.72rem;
+	text-transform: uppercase;
+	letter-spacing: 0.08em;
+	color: #8A8D91 !important;
+	text-decoration: none !important;
+	border-bottom: 1px solid rgba(255, 255, 255, 0.25);
+	padding-bottom: 2px;
+	white-space: nowrap;
+}
+.pt-nav-link:hover {
+	color: #EFEFEF !important;
+	border-color: #EFEFEF !important;
+}
+
+.location-result {
+	font-size: 1.6rem;
+	font-weight: 400;
+	letter-spacing: -0.02em;
+	color: #EFEFEF;
+	margin: 0.25rem 0 1rem 0;
+}
+.location-result .country {
+	color: #8A8D91;
+}
 </style>
+"""
+
+NAVBAR = f"""
+<div class="pt-navbar">
+	<div class="pt-navbar-left">
+		<a class="pt-nav-wordmark" href="{PALANTIR_URL}" target="_blank" rel="noopener noreferrer">Palantir</a>
+		<a class="pt-nav-link" href="{PALANTIR_URL}" target="_blank" rel="noopener noreferrer">Palantir this way &rarr;</a>
+	</div>
+	<div>
+		<a class="pt-nav-link" href="#main-content">&darr; Palan-lowtier down here</a>
+	</div>
+</div>
+<div id="main-content"></div>
 """
 
 
@@ -129,9 +194,33 @@ def predict(interpreter: tf.lite.Interpreter, batch: np.ndarray) -> np.ndarray:
 	return interpreter.get_tensor(output_details[0]["index"])[0]
 
 
+@st.cache_data(show_spinner=False, ttl=3600)
+def reverse_geocode(lat: float, lon: float) -> tuple[str, str]:
+	"""Return (region, country) for a coordinate via the BigDataCloud reverse-geocode API.
+
+	Best-effort: the predicted point is a geocell centroid, not an exact location, so
+	this is a nearby administrative area rather than a precise address. Falls back to
+	empty strings on any network error rather than failing the whole page.
+	"""
+	try:
+		response = requests.get(
+			REVERSE_GEOCODE_URL,
+			params={"latitude": lat, "longitude": lon, "localityLanguage": "en"},
+			timeout=5,
+		)
+		response.raise_for_status()
+		data = response.json()
+		country = data.get("countryName", "")
+		region = data.get("principalSubdivision") or data.get("city") or ""
+		return region, country
+	except (requests.RequestException, ValueError):
+		return "", ""
+
+
 def main() -> None:
 	st.set_page_config(page_title="Palan-lowtier", page_icon="\U0001f30f")
 	st.markdown(STYLE, unsafe_allow_html=True)
+	st.markdown(NAVBAR, unsafe_allow_html=True)
 	st.title("Palan Lowtier: Guess the Location")
 	st.caption("Currently trained on street-view images from across Asia.")
 
@@ -169,6 +258,15 @@ def main() -> None:
 
 	st.subheader("Best guess")
 	st.caption(f"Weighted average of the top {TOP_K} predicted cells")
+
+	with st.spinner("Looking up the nearest region and country..."):
+		region, country = reverse_geocode(guess_lat, guess_lon)
+	if country:
+		location_label = f"{region}, <span class='country'>{country}</span>" if region else country
+	else:
+		location_label = "Unable to determine region/country right now"
+	st.markdown(f"<div class='location-result'>{location_label}</div>", unsafe_allow_html=True)
+
 	col1, col2, col3 = st.columns(3)
 	col1.metric("Latitude", f"{guess_lat:.4f}")
 	col2.metric("Longitude", f"{guess_lon:.4f}")
