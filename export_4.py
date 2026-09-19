@@ -12,6 +12,7 @@ import tensorflow as tf
 from geo_utils import load_centroids
 
 CENTROIDS_PATH = Path("cell_centroids.json")
+COUNTRY_ACCURACY_PATH = Path("country_accuracy.json")
 EXPORT_DIR = Path("export")
 DEFAULT_MODEL_PATH = Path("checkpoints/best.keras")
 IMAGE_SIZE = (224, 224)
@@ -50,6 +51,12 @@ def main() -> None:
 
 	shutil.copyfile(CENTROIDS_PATH, EXPORT_DIR / "cell_centroids.json")
 	print(f"Copied {CENTROIDS_PATH} to {EXPORT_DIR / 'cell_centroids.json'}")
+
+	if COUNTRY_ACCURACY_PATH.exists():
+		shutil.copyfile(COUNTRY_ACCURACY_PATH, EXPORT_DIR / "country_accuracy.json")
+		print(f"Copied {COUNTRY_ACCURACY_PATH} to {EXPORT_DIR / 'country_accuracy.json'}")
+	else:
+		print(f"No {COUNTRY_ACCURACY_PATH} found; run evaluate_3.py to generate it for the Model Stats page.")
 
 	config = {
 		"image_size": list(IMAGE_SIZE),

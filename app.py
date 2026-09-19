@@ -6,24 +6,26 @@ import json
 from pathlib import Path
 
 import numpy as np
+import pandas as pd
 import pillow_avif  # noqa: F401 - registers AVIF support with Pillow
+import pycountry
 import pydeck as pdk
-import requests
 import streamlit as st
 import tensorflow as tf
 from google import genai
 from PIL import Image
 
+from geo_utils import reverse_geocode as _reverse_geocode_raw
 from geo_utils import weighted_centroid
 
 PALANTIR_URL = "https://www.palantir.com"
-REVERSE_GEOCODE_URL = "https://api.bigdatacloud.net/data/reverse-geocode-client"
 GEMINI_MODEL = "gemini-flash-latest"
 
 EXPORT_DIR = Path(__file__).resolve().parent / "export"
 MODEL_PATH = EXPORT_DIR / "model.tflite"
 CENTROIDS_PATH = EXPORT_DIR / "cell_centroids.json"
 CONFIG_PATH = EXPORT_DIR / "config.json"
+COUNTRY_ACCURACY_PATH = EXPORT_DIR / "country_accuracy.json"
 TOP_K = 5
 
 # Dark, high-contrast theme inspired by palantir.com's measured styles: near-black
@@ -94,12 +96,9 @@ hr {
 	border: 1px solid rgba(255, 255, 255, 0.15) !important;
 }
 
-.pt-navbar {
-	display: flex;
-	justify-content: space-between;
-	align-items: center;
-	flex-wrap: wrap;
-	gap: 0.75rem;
+.st-key-navbar {
+	justify-content: space-between !important;
+	width: 100% !important;
 	padding: 0 0 1rem 0;
 	margin-bottom: 1.5rem;
 	border-bottom: 1px solid rgba(255, 255, 255, 0.1);
@@ -116,19 +115,25 @@ hr {
 	color: #EFEFEF !important;
 	text-decoration: none !important;
 }
-.pt-nav-link {
-	font-size: 0.72rem;
-	text-transform: uppercase;
-	letter-spacing: 0.08em;
+.pt-nav-link, [data-testid="stPageLink-NavLink"] {
+	font-size: 0.72rem !important;
+	text-transform: uppercase !important;
+	letter-spacing: 0.08em !important;
 	color: #8A8D91 !important;
 	text-decoration: none !important;
-	border-bottom: 1px solid rgba(255, 255, 255, 0.25);
-	padding-bottom: 2px;
+	border-bottom: 1px solid rgba(255, 255, 255, 0.25) !important;
+	padding-bottom: 2px !important;
 	white-space: nowrap;
+	background: transparent !important;
 }
-.pt-nav-link:hover {
+.pt-nav-link:hover, [data-testid="stPageLink-NavLink"]:hover {
 	color: #EFEFEF !important;
 	border-color: #EFEFEF !important;
+	background: transparent !important;
+}
+[data-testid="stPageLink-NavLink"] p {
+	font-size: inherit !important;
+	color: inherit !important;
 }
 
 .location-result {
@@ -144,17 +149,11 @@ hr {
 </style>
 """
 
-NAVBAR = f"""
-<div class="pt-navbar">
-	<div class="pt-navbar-left">
-		<a class="pt-nav-wordmark" href="{PALANTIR_URL}" target="_blank" rel="noopener noreferrer">Palantir</a>
-		<a class="pt-nav-link" href="{PALANTIR_URL}" target="_blank" rel="noopener noreferrer">&larr; Palantir this way</a>
-	</div>
-	<div>
-		<a class="pt-nav-link" href="#main-content">&darr; Palan-lowtier down here</a>
-	</div>
+NAVBAR_LEFT = f"""
+<div class="pt-navbar-left">
+	<a class="pt-nav-wordmark" href="{PALANTIR_URL}" target="_blank" rel="noopener noreferrer">Palantir</a>
+	<a class="pt-nav-link" href="{PALANTIR_URL}" target="_blank" rel="noopener noreferrer">&larr; Palantir this way</a>
 </div>
-<div id="main-content"></div>
 """
 
 
@@ -198,25 +197,10 @@ def predict(interpreter: tf.lite.Interpreter, batch: np.ndarray) -> np.ndarray:
 
 @st.cache_data(show_spinner=False, ttl=3600)
 def reverse_geocode(lat: float, lon: float) -> tuple[str, str]:
-	"""Return (region, country) for a coordinate via the BigDataCloud reverse-geocode API.
-
-	Best-effort: the predicted point is a geocell centroid, not an exact location, so
-	this is a nearby administrative area rather than a precise address. Falls back to
-	empty strings on any network error rather than failing the whole page.
-	"""
-	try:
-		response = requests.get(
-			REVERSE_GEOCODE_URL,
-			params={"latitude": lat, "longitude": lon, "localityLanguage": "en"},
-			timeout=5,
-		)
-		response.raise_for_status()
-		data = response.json()
-		country = data.get("countryName", "")
-		region = data.get("principalSubdivision") or data.get("city") or ""
-		return region, country
-	except (requests.RequestException, ValueError):
-		return "", ""
+	"""Return (region, country) for a coordinate. Thin cached wrapper around geo_utils'
+	shared implementation, kept here so app.py's Streamlit session cache applies."""
+	result = _reverse_geocode_raw(lat, lon)
+	return result["region"], result["country_name"]
 
 
 def _normalize_country(name: str) -> str:
@@ -268,10 +252,7 @@ def gemini_guess_country(client: genai.Client, image: Image.Image, candidate_cou
 	return None
 
 
-def main() -> None:
-	st.set_page_config(page_title="Palan-lowtier", page_icon="\U0001f30f")
-	st.markdown(STYLE, unsafe_allow_html=True)
-	st.markdown(NAVBAR, unsafe_allow_html=True)
+def home_page() -> None:
 	st.title("Palan-lowtier: Guess the Location")
 	st.caption("Currently trained on street-view images from across Asia.")
 
@@ -373,6 +354,72 @@ def main() -> None:
 	for rank, cell_id in enumerate(top_indices, start=1):
 		lat, lon = centroids[int(cell_id)]
 		st.write(f"{rank}. cell {cell_id}: ({lat:.4f}, {lon:.4f}) — {probabilities[cell_id]:.1%}")
+
+
+def model_stats_page() -> None:
+	st.title("Model Stats")
+	st.caption("Per-country accuracy on the held-out dev set, from the most recent evaluate_3.py run.")
+
+	if not COUNTRY_ACCURACY_PATH.exists():
+		st.info(
+			"No country-accuracy data yet. Run evaluate_3.py (after data_pipeline_1.py and "
+			"train_2.py) and then export_4.py to generate it."
+		)
+		return
+
+	per_country = json.loads(COUNTRY_ACCURACY_PATH.read_text(encoding="utf-8"))
+
+	rows = []
+	for country in pycountry.countries:
+		code = country.alpha_2
+		stats = per_country.get(code)
+		if stats and stats.get("total", 0) > 0:
+			rows.append(
+				{
+					"Country": country.name,
+					"Accuracy": stats["correct"] / stats["total"],
+					"Dev images": f"{stats['total']:,}",
+				}
+			)
+		else:
+			rows.append({"Country": country.name, "Accuracy": None, "Dev images": ""})
+
+	table = pd.DataFrame(rows).sort_values(
+		by=["Accuracy", "Country"], ascending=[False, True], na_position="last"
+	)
+
+	available = table["Accuracy"].notna().sum()
+	st.caption(f"{available} of {len(table)} countries/territories have dev-set data.")
+
+	st.dataframe(
+		table,
+		use_container_width=True,
+		hide_index=True,
+		height=600,
+		column_config={
+			"Accuracy": st.column_config.ProgressColumn(
+				"Accuracy", format="percent", min_value=0.0, max_value=1.0
+			),
+		},
+	)
+
+
+def main() -> None:
+	st.set_page_config(page_title="Palan-lowtier", page_icon="\U0001f30f")
+	st.markdown(STYLE, unsafe_allow_html=True)
+
+	home = st.Page(home_page, title="Home", url_path="home", default=True)
+	stats = st.Page(model_stats_page, title="Model Stats", url_path="model-stats")
+	page = st.navigation([home, stats], position="hidden")
+
+	with st.container(horizontal=True, vertical_alignment="center", key="navbar"):
+		st.markdown(NAVBAR_LEFT, unsafe_allow_html=True)
+		if page.title == "Home":
+			st.page_link(stats, label="Model Stats →")
+		else:
+			st.page_link(home, label="← Home")
+
+	page.run()
 
 
 if __name__ == "__main__":

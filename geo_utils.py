@@ -6,12 +6,15 @@ import json
 from pathlib import Path
 
 import numpy as np
+import requests
 
 
 EARTH_RADIUS_KM = 6371.0088
 
 # Standard geolocation error buckets (street / city / region / country / continent).
 ACCURACY_THRESHOLDS_KM = (1.0, 25.0, 200.0, 750.0, 2500.0)
+
+REVERSE_GEOCODE_URL = "https://api.bigdatacloud.net/data/reverse-geocode-client"
 
 
 def haversine(
@@ -87,3 +90,27 @@ def weighted_centroid(
 	lat = np.sum(weights * centroid_lat[top_indices], axis=1)
 	lon = np.sum(weights * centroid_lon[top_indices], axis=1)
 	return (float(lat[0]), float(lon[0])) if single else (lat, lon)
+
+
+def reverse_geocode(lat: float, lon: float) -> dict[str, str]:
+	"""Return {'region', 'country_name', 'country_code'} for a coordinate via BigDataCloud.
+
+	Best-effort: on any network error, all three values come back as empty strings
+	rather than raising, since this is always used for display/analysis, never for
+	something the caller can't proceed without.
+	"""
+	try:
+		response = requests.get(
+			REVERSE_GEOCODE_URL,
+			params={"latitude": lat, "longitude": lon, "localityLanguage": "en"},
+			timeout=5,
+		)
+		response.raise_for_status()
+		data = response.json()
+		return {
+			"region": data.get("principalSubdivision") or data.get("city") or "",
+			"country_name": data.get("countryName", ""),
+			"country_code": data.get("countryCode", ""),
+		}
+	except (requests.RequestException, ValueError):
+		return {"region": "", "country_name": "", "country_code": ""}

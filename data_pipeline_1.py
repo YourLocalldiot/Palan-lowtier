@@ -277,7 +277,7 @@ def build_eval_dataset(
 	batch_size: int = 32,
 	normalization: str = "minus_one_one",
 ) -> tf.data.Dataset:
-	"""Build an unaugmented pipeline returning images, cell labels, and true coordinates."""
+	"""Build an unaugmented pipeline returning images, cell labels, true coordinates, and country."""
 	if normalization not in {"minus_one_one", "imagenet"}:
 		raise ValueError("normalization must be 'minus_one_one' or 'imagenet'")
 	feature_spec = {
@@ -285,12 +285,19 @@ def build_eval_dataset(
 		"cell_id": tf.io.FixedLenFeature([], tf.int64),
 		"latitude": tf.io.FixedLenFeature([], tf.float32),
 		"longitude": tf.io.FixedLenFeature([], tf.float32),
+		"country_code": tf.io.FixedLenFeature([], tf.string),
 	}
 
-	def parse(serialized: tf.Tensor) -> tuple[tf.Tensor, tf.Tensor, tf.Tensor, tf.Tensor]:
+	def parse(serialized: tf.Tensor) -> tuple[tf.Tensor, tf.Tensor, tf.Tensor, tf.Tensor, tf.Tensor]:
 		parsed = tf.io.parse_single_example(serialized, feature_spec)
 		image = _preprocess_image(parsed["image"], normalization, training=False)
-		return image, tf.cast(parsed["cell_id"], tf.int32), parsed["latitude"], parsed["longitude"]
+		return (
+			image,
+			tf.cast(parsed["cell_id"], tf.int32),
+			parsed["latitude"],
+			parsed["longitude"],
+			parsed["country_code"],
+		)
 
 	dataset = tf.data.TFRecordDataset(str(tfrecord_path))
 	return dataset.map(parse, num_parallel_calls=tf.data.AUTOTUNE).batch(batch_size).prefetch(
