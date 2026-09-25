@@ -112,5 +112,14 @@ def reverse_geocode(lat: float, lon: float) -> dict[str, str]:
 			"country_name": data.get("countryName", ""),
 			"country_code": data.get("countryCode", ""),
 		}
-	except (requests.RequestException, ValueError):
+	except requests.RequestException as exc:
+		# Print rather than raise: this is always used for display/analysis, never
+		# for something the caller can't proceed without. But a silently-swallowed
+		# failure is indistinguishable from "this point legitimately has no
+		# country" (e.g. open water) - print so a real API/network failure is at
+		# least visible in the app's logs instead of a total guessing game.
+		print(f"reverse_geocode({lat}, {lon}) failed: {exc!r}")
+		return {"region": "", "country_name": "", "country_code": ""}
+	except ValueError as exc:
+		print(f"reverse_geocode({lat}, {lon}) got an unparseable response: {exc!r}")
 		return {"region": "", "country_name": "", "country_code": ""}
