@@ -284,7 +284,6 @@ def home_page() -> None:
 	centroid_lon = np.array([centroids[i][1] for i in range(num_classes)])
 
 	top_k_indices = np.argsort(probabilities)[::-1][:TOP_K]
-	top_indices = top_k_indices[:3]
 	best_cell = int(top_k_indices[0])
 	confidence = float(probabilities[best_cell])
 	guess_lat, guess_lon = weighted_centroid(probabilities, centroid_lat, centroid_lon, top_k=TOP_K)
@@ -321,11 +320,25 @@ def home_page() -> None:
 			)
 
 	region, country = reverse_geocode(guess_lat, guess_lon)
+	used_fallback_location = False
+	if not country:
+		# The blended point can land in open water (e.g. averaging two coastal
+		# guesses) even though every cell it was blended from is a real on-land
+		# location - fall back to the single best cell's own location instead of
+		# showing nothing.
+		region, country = reverse_geocode(*centroids[best_cell])
+		used_fallback_location = True
+
 	if country:
 		location_label = f"{region}, <span class='country'>{country}</span>" if region else country
 	else:
 		location_label = "Unable to determine region/country right now"
 	st.markdown(f"<div class='location-result'>{location_label}</div>", unsafe_allow_html=True)
+	if used_fallback_location:
+		st.caption(
+			"The blended guess falls outside any mapped border (likely open water) - "
+			"showing the nearest single predicted location instead."
+		)
 	if gemini_note:
 		st.caption(gemini_note)
 
@@ -334,24 +347,44 @@ def home_page() -> None:
 	col2.metric("Longitude", f"{guess_lon:.4f}")
 	col3.metric("Top cell confidence", f"{confidence:.1%}")
 
+	top_cells_data = [
+		{
+			"lat": float(centroids[int(cell_id)][0]),
+			"lon": float(centroids[int(cell_id)][1]),
+			"label": f"Rank {rank}: cell {int(cell_id)} ({probabilities[cell_id]:.1%})",
+		}
+		for rank, cell_id in enumerate(top_k_indices, start=1)
+	]
+
 	st.pydeck_chart(
 		pdk.Deck(
 			map_style=None,
 			initial_view_state=pdk.ViewState(latitude=guess_lat, longitude=guess_lon, zoom=4),
+			tooltip={"text": "{label}"},
 			layers=[
 				pdk.Layer(
 					"ScatterplotLayer",
-					data=[{"lat": guess_lat, "lon": guess_lon}],
+					data=top_cells_data,
+					get_position="[lon, lat]",
+					get_fill_color=[239, 239, 239, 130],
+					get_radius=18000,
+					pickable=True,
+				),
+				pdk.Layer(
+					"ScatterplotLayer",
+					data=[{"lat": guess_lat, "lon": guess_lon, "label": f"Best guess ({confidence:.1%} top cell)"}],
 					get_position="[lon, lat]",
 					get_fill_color=[220, 40, 40],
 					get_radius=40000,
-				)
+					pickable=True,
+				),
 			],
 		)
 	)
+	st.caption("Red = final blended guess. White = each of the top 5 predicted cells.")
 
-	st.subheader("Top 3 predictions")
-	for rank, cell_id in enumerate(top_indices, start=1):
+	st.subheader(f"Top {TOP_K} predictions")
+	for rank, cell_id in enumerate(top_k_indices, start=1):
 		lat, lon = centroids[int(cell_id)]
 		st.write(f"{rank}. cell {cell_id}: ({lat:.4f}, {lon:.4f}) — {probabilities[cell_id]:.1%}")
 

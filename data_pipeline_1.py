@@ -20,8 +20,9 @@ from geo_utils import haversine
 
 DATASET_NAME = "josefbednar/world-streetview-500k"
 # ISO 3166-1 alpha-2 codes for every country/territory in the UN geoscheme's Asia
-# region (Eastern, South-Eastern, Southern, Central, and Western Asia).
-COUNTRIES = frozenset(
+# region (Eastern, South-Eastern, Southern, Central, and Western Asia). Set this to
+# None instead to remove the filter entirely and keep every country in the dataset.
+COUNTRIES: frozenset[str] | None = frozenset(
 	{
 		# Eastern Asia
 		"CN", "HK", "MO", "JP", "MN", "KP", "KR", "TW",
@@ -132,7 +133,7 @@ def materialize_filtered_split(output_path: Path = RAW_TFRECORD) -> None:
 			scanned += 1
 			if scanned % progress_every == 0:
 				print(f"  scanned {scanned:,} source records, kept {total:,} so far...")
-			if source_record.get("country_code") not in COUNTRIES:
+			if COUNTRIES is not None and source_record.get("country_code") not in COUNTRIES:
 				continue
 			record = {
 				"image": _image_to_jpeg(source_record["image"]),
@@ -154,7 +155,10 @@ def materialize_filtered_split(output_path: Path = RAW_TFRECORD) -> None:
 
 def print_country_counts(counts: Counter[str]) -> None:
 	print("Per-country image counts:")
-	for country in sorted(COUNTRIES):
+	# With no COUNTRIES filter, list whatever countries actually showed up rather than
+	# a fixed set - there's no predetermined list to iterate over.
+	countries_to_show = sorted(COUNTRIES) if COUNTRIES is not None else sorted(counts)
+	for country in countries_to_show:
 		count = counts[country]
 		warning = "  WARNING: under ~2,000 images" if count < 2_000 else ""
 		print(f"  {country}: {count:,}{warning}")
