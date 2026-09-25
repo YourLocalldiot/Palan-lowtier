@@ -293,10 +293,12 @@ def home_page() -> None:
 
 	gemini_note = None
 	with st.spinner("Looking up the nearest region and country..."):
-		# Reverse-geocode each of the CNN's top-k cells to see whether its own
-		# candidates actually span more than one country - a direct sign of the
-		# cross-country ambiguity the plain weighted-centroid blend can't resolve.
-		cell_countries = [reverse_geocode(*centroids[int(idx)])[1] for idx in top_k_indices]
+		# Reverse-geocode each of the CNN's top-k cells once, up front. This tells us
+		# whether the model's own candidates span more than one country (a direct
+		# sign of cross-country ambiguity the plain weighted-centroid blend can't
+		# resolve), and doubles as a ranked fallback chain for display below.
+		cell_geocodes = [reverse_geocode(*centroids[int(idx)]) for idx in top_k_indices]
+		cell_countries = [country for _, country in cell_geocodes]
 		distinct_countries = sorted({c for c in cell_countries if c})
 
 	if len(distinct_countries) > 1:
@@ -320,24 +322,28 @@ def home_page() -> None:
 			)
 
 	region, country = reverse_geocode(guess_lat, guess_lon)
-	used_fallback_location = False
+	used_fallback_rank = None
 	if not country:
-		# The blended point can land in open water (e.g. averaging two coastal
-		# guesses) even though every cell it was blended from is a real on-land
-		# location - fall back to the single best cell's own location instead of
-		# showing nothing.
-		region, country = reverse_geocode(*centroids[best_cell])
-		used_fallback_location = True
+		# The blended point - or even a single geocell's own centroid, for
+		# archipelago countries where K-means can average several islands into an
+		# open-water point - can fall outside any mapped border. Walk the ranked
+		# candidates and use the first one that actually resolves, rather than
+		# giving up after just one attempt.
+		for rank, (candidate_region, candidate_country) in enumerate(cell_geocodes, start=1):
+			if candidate_country:
+				region, country = candidate_region, candidate_country
+				used_fallback_rank = rank
+				break
 
 	if country:
 		location_label = f"{region}, <span class='country'>{country}</span>" if region else country
 	else:
 		location_label = "Unable to determine region/country right now"
 	st.markdown(f"<div class='location-result'>{location_label}</div>", unsafe_allow_html=True)
-	if used_fallback_location:
+	if used_fallback_rank is not None:
 		st.caption(
 			"The blended guess falls outside any mapped border (likely open water) - "
-			"showing the nearest single predicted location instead."
+			f"showing rank {used_fallback_rank}'s predicted location instead."
 		)
 	if gemini_note:
 		st.caption(gemini_note)
@@ -352,6 +358,9 @@ def home_page() -> None:
 			"lat": float(centroids[int(cell_id)][0]),
 			"lon": float(centroids[int(cell_id)][1]),
 			"label": f"Rank {rank}: cell {int(cell_id)} ({probabilities[cell_id]:.1%})",
+			# Higher-confidence cells get a visibly bigger ring, so confidence is
+			# readable from the map itself, not just the tooltip.
+			"radius": 12_000 + float(probabilities[cell_id]) * 70_000,
 		}
 		for rank, cell_id in enumerate(top_k_indices, start=1)
 	]
@@ -366,8 +375,11 @@ def home_page() -> None:
 					"ScatterplotLayer",
 					data=top_cells_data,
 					get_position="[lon, lat]",
-					get_fill_color=[239, 239, 239, 130],
-					get_radius=18000,
+					get_radius="radius",
+					get_fill_color=[239, 159, 39, 70],
+					get_line_color=[239, 159, 39, 255],
+					stroked=True,
+					get_line_width=1500,
 					pickable=True,
 				),
 				pdk.Layer(
@@ -381,7 +393,10 @@ def home_page() -> None:
 			],
 		)
 	)
-	st.caption("Red = final blended guess. White = each of the top 5 predicted cells.")
+	st.caption(
+		"Red = final blended guess. Amber rings = top 5 predicted cells "
+		"(bigger ring = higher confidence - hover for rank and cell details)."
+	)
 
 	st.subheader(f"Top {TOP_K} predictions")
 	for rank, cell_id in enumerate(top_k_indices, start=1):
