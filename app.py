@@ -447,7 +447,7 @@ def main() -> None:
 
 	with st.container(horizontal=True, vertical_alignment="center", key="navbar"):
 		st.markdown(NAVBAR_LEFT, unsafe_allow_html=True)
-		if page.title == "Home":
+		if page is home:
 			st.page_link(stats, label="Model Stats →")
 		else:
 			st.page_link(home, label="← Home")
