@@ -253,8 +253,7 @@ def gemini_guess_country(client: genai.Client, image: Image.Image, candidate_cou
 
 
 def home_page() -> None:
-	st.title("Palan-lowtier: Guess the Location")
-	st.caption("Currently trained on street-view images from across Asia.")
+	st.title("Palan-lowtier: Guess the Location - Asia")
 
 	if not MODEL_PATH.exists() or not CENTROIDS_PATH.exists() or not CONFIG_PATH.exists():
 		st.error(f"No exported model bundle found in {EXPORT_DIR}/. Run export_4.py first.")
@@ -289,7 +288,6 @@ def home_page() -> None:
 	guess_lat, guess_lon = weighted_centroid(probabilities, centroid_lat, centroid_lon, top_k=TOP_K)
 
 	st.subheader("Best guess")
-	st.caption(f"Weighted average of the top {TOP_K} predicted cells")
 
 	gemini_note = None
 	with st.spinner("Looking up the nearest region and country..."):
@@ -394,7 +392,7 @@ def home_page() -> None:
 		)
 	)
 	st.caption(
-		"Red = final blended guess. Amber rings = top 5 predicted cells "
+		"Red = final guess. Amber rings = top 5 predicted cells "
 		"(bigger ring = higher confidence - hover for rank and cell details)."
 	)
 
